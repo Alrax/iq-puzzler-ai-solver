@@ -4,9 +4,9 @@ from constants import *
 class Board:
     """Board backed by a 2D list of ints (piece codes). 0 = empty.
 
-    Placement uses rotation only (0,90,180,270 clockwise). 
-    Signature:
-        place_piece(color, origin_row, origin_col, rotation)
+    Supports rotation (0,90,180,270 clockwise) and optional horizontal / vertical flips.
+    Placement signature:
+        place_piece(color, origin_row, origin_col, rotation=0, flip_h=False, flip_v=False)
     """
 
     def __init__(self):
@@ -23,18 +23,23 @@ class Board:
         for r in range(self.nb_rows):
             for c in range(self.nb_cols):
                 self.grid[r][c] = PIECE_CODES["empty"]
+        self.available = [c for c in PIECE_COLOR.__args__ if c != "empty"]
 
     def get(self, row: int, col: int) -> int:
         if 0 <= row < self.nb_rows and 0 <= col < self.nb_cols:
             return self.grid[row][col]
         return PIECE_CODES["empty"]
 
-    def rotate_piece(self, color: PIECE_COLOR, rotation: int) -> tuple[tuple[int, int], ...]:
+    def transform_piece(self, color: PIECE_COLOR, rotation: int = 0, flip_h: bool = False, flip_v: bool = False) -> tuple[tuple[int, int], ...]:
         if rotation not in (0, 90, 180, 270):
             raise ValueError("rotation must be 0, 90, 180, or 270")
         base = PIECE_DIMENSIONS[color]
-        rotated: list[tuple[int, int]] = []
+        transformed: list[tuple[int, int]] = []
         for r, c in base:
+            if flip_h:
+                c = -c
+            if flip_v:
+                r = -r
             if rotation == 0:
                 nr, nc = r, c
             elif rotation == 90:
@@ -43,18 +48,19 @@ class Board:
                 nr, nc = -r, -c
             else:  # 270
                 nr, nc = -c, r
-            rotated.append((nr, nc))
-        min_r = min(pt[0] for pt in rotated)
-        min_c = min(pt[1] for pt in rotated)
-        normalized = tuple((r - min_r, c - min_c) for r, c in rotated)
+            transformed.append((nr, nc))
+        min_r = min(pt[0] for pt in transformed)
+        min_c = min(pt[1] for pt in transformed)
+        normalized = tuple((r - min_r, c - min_c) for r, c in transformed)
         return normalized
 
-    def can_place_piece(self, color: PIECE_COLOR, origin_row: int, origin_col: int, rotation: int = 0) -> bool:
+    def can_place_piece(self, color: PIECE_COLOR, origin_row: int, origin_col: int,
+                        rotation: int = 0, flip_h: bool = False, flip_v: bool = False) -> bool:
         if color not in PIECE_DIMENSIONS or color == "empty":
             return False
         code = PIECE_CODES[color]
         try:
-            offsets = self.rotate_piece(color, rotation)
+            offsets = self.transform_piece(color, rotation, flip_h, flip_v)
         except ValueError:
             return False
         for dr, dc in offsets:
@@ -67,11 +73,12 @@ class Board:
                 return False
         return True
 
-    def place_piece(self, color: PIECE_COLOR, origin_row: int, origin_col: int, rotation: int = 0) -> bool:
-        if not self.can_place_piece(color, origin_row, origin_col, rotation):
+    def place_piece(self, color: PIECE_COLOR, origin_row: int, origin_col: int,
+                    rotation: int = 0, flip_h: bool = False, flip_v: bool = False) -> bool:
+        if not self.can_place_piece(color, origin_row, origin_col, rotation, flip_h, flip_v):
             return False
         code = PIECE_CODES[color]
-        offsets = self.rotate_piece(color, rotation)
+        offsets = self.transform_piece(color, rotation, flip_h, flip_v)
         for dr, dc in offsets:
             r = origin_row + dr
             c = origin_col + dc
@@ -111,25 +118,20 @@ class Board:
         return regions
 
     def initial_layout_valid(self) -> bool:
-        """Heuristic validation: no isolated empty region smaller than smallest piece size (3)."""
+        """No isolated empty region smaller than smallest piece size."""
         regions = self.empty_regions()
         for comp in regions:
             if len(comp) < 3:
                 return False
+        if "light_blue" not in self.available:
+            for comp in regions:
+                if len(comp) < 4:
+                    return False
         return True
 
-    def generate_puzzle(self, max_global_attempts: int = 100, piece_attempts: int = 200) -> None:
-        """Generate initial puzzle by placing two random distinct pieces.
-
-        Steps:
-        1. Randomly choose 2 distinct piece colors (excluding 'empty').
-        2. For each piece, try random rotations and board positions until placed.
-        3. Validate no isolated empty regions of size <3 (unfillable cavities).
-        4. Retry if validation fails.
-        If generation fails after max attempts, board remains empty.
-        """
-
-        for _ in range(max_global_attempts):
+    def generate_puzzle(self, max_total_attempts: int = 100, piece_attempts: int = 200) -> None:
+        """Generate initial puzzle by placing two random distinct pieces."""
+        for _ in range(max_total_attempts):
             # Reset board each global attempt
             self.clear()
             chosen = random.sample(self.available, 2)
@@ -138,11 +140,14 @@ class Board:
                 placed = False
                 for _ in range(piece_attempts):
                     rotation = random.choice([0, 90, 180, 270])
+                    flip_h = random.choice([False, True])
+                    flip_v = random.choice([False, True])
                     origin_row = random.randint(0, self.nb_rows - 1)
                     origin_col = random.randint(0, self.nb_cols - 1)
-                    if self.can_place_piece(color, origin_row, origin_col, rotation):
-                        self.place_piece(color, origin_row, origin_col, rotation)
+                    if self.can_place_piece(color, origin_row, origin_col, rotation, flip_h, flip_v):
+                        self.place_piece(color, origin_row, origin_col, rotation, flip_h, flip_v)
                         placed = True
+                        self.available.remove(color)
                         break
                 if not placed:
                     success = False
@@ -153,10 +158,9 @@ class Board:
                 return  # successful generation
         self.clear()
 
-    # Debug / display helpers
+    # Debug helper
     def __str__(self) -> str:
-        """Return a human-readable string of the board grid.
-
+        """Return a readable string of the board grid.
         Empty cells shown as '.', others as their numeric code.
         """
         lines: list[str] = []
