@@ -1,5 +1,5 @@
 import random
-from constants import *
+from game_logic.constants import *
 
 class Board:
     """Board backed by a 2D list of ints (piece codes). 0 = empty.
@@ -56,7 +56,7 @@ class Board:
 
     def can_place_piece(self, color: PIECE_COLOR, origin_row: int, origin_col: int,
                         rotation: int = 0, flip_h: bool = False, flip_v: bool = False) -> bool:
-        if color not in PIECE_DIMENSIONS or color == "empty":
+        if color not in self.available or color == "empty":
             return False
         code = PIECE_CODES[color]
         try:
