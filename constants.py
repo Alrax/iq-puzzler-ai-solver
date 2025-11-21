@@ -34,5 +34,21 @@ PIECE_DIMENSIONS: dict[PIECE_COLOR, PIECE_SHAPE] = {
     "turquoise": ((0, 0), (0, 1), (1, 0), (1, 1), (1, 2)),
     "lime": ((0, 0), (0, 1), (1, 0), (2, 0), (2, 1)),
     "green": ((0, 0), (1, 0), (1, 1), (2, 0)),
-    "empty": (),
+}
+
+# Numerical code for each piece color; 0 represents empty.
+PIECE_CODES: dict[PIECE_COLOR, int] = {
+    "empty": 0,
+    "yellow": 1,
+    "orange": 2,
+    "red": 3,
+    "burgundy": 4,
+    "pink": 5,
+    "purple": 6,
+    "dark_blue": 7,
+    "blue": 8,
+    "light_blue": 9,
+    "turquoise": 10,
+    "lime": 11,
+    "green": 12,
 }
