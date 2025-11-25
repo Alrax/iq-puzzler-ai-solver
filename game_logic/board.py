@@ -1,4 +1,5 @@
 import random
+from typing import List, Tuple
 from game_logic.constants import *
 
 class Board:
@@ -16,6 +17,7 @@ class Board:
             [PIECE_CODES["empty"] for _ in range(self.nb_cols)] for _ in range(self.nb_rows)
         ]
         self.available = [c for c in PIECE_COLOR.__args__ if c != "empty"]
+        self.history: List[Tuple[PIECE_COLOR, List[Tuple[int, int]]]] = []
         # Automatically generate initial puzzle layout
         self.generate_puzzle()
 
@@ -24,6 +26,7 @@ class Board:
             for c in range(self.nb_cols):
                 self.grid[r][c] = PIECE_CODES["empty"]
         self.available = [c for c in PIECE_COLOR.__args__ if c != "empty"]
+        self.history.clear()
 
     def get(self, row: int, col: int) -> int:
         if 0 <= row < self.nb_rows and 0 <= col < self.nb_cols:
@@ -79,10 +82,13 @@ class Board:
             return False
         code = PIECE_CODES[color]
         offsets = self.transform_piece(color, rotation, flip_h, flip_v)
+        cells: List[Tuple[int, int]] = []
         for dr, dc in offsets:
             r = origin_row + dr
             c = origin_col + dc
             self.grid[r][c] = code
+            cells.append((r, c))
+        self.history.append((color, cells))
         return True
 
     def remove_piece(self, color: PIECE_COLOR):
@@ -93,6 +99,19 @@ class Board:
             for c in range(self.nb_cols):
                 if self.grid[r][c] == code:
                     self.grid[r][c] = PIECE_CODES["empty"]
+
+    def undo_last_piece(self) -> PIECE_COLOR | None:
+        if not self.history:
+            return None
+        color, _cells = self.history.pop()
+        code = PIECE_CODES[color]
+        for r in range(self.nb_rows):
+            for c in range(self.nb_cols):
+                if self.grid[r][c] == code:
+                    self.grid[r][c] = PIECE_CODES["empty"]
+        if color not in self.available:
+            self.available.append(color)
+        return color
 
     def empty_regions(self) -> list[set[tuple[int,int]]]:
         """Return list of connected empty regions (4-direction)."""
@@ -155,6 +174,7 @@ class Board:
             if not success:
                 continue
             if self.initial_layout_valid():
+                self.history.clear()
                 return  # successful generation
         self.clear()
 
