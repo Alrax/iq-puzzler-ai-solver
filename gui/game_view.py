@@ -152,6 +152,15 @@ class GameView(tk.Frame):
             pady=8,
         )
         take_back_btn.grid(row=0, column=0, padx=4, pady=6, sticky="nsew")
+        new_board_btn = make_primary_button(
+            sidebar_bottom,
+            text="New Board",
+            command=self.new_board,
+            font=self.small_font,
+            padx=12,
+            pady=8,
+        )
+        new_board_btn.grid(row=0, column=1, padx=4, pady=6, sticky="nsew")
         if self.mode == "auto":
             solve_btn = make_primary_button(
                 sidebar_bottom,
@@ -161,12 +170,10 @@ class GameView(tk.Frame):
                 padx=12,
                 pady=8,
             )
-            solve_btn.grid(row=0, column=1, padx=4, pady=6, sticky="nsew")
+            solve_btn.grid(row=0, column=2, padx=4, pady=6, sticky="nsew")
         else:
-            spacer = tk.Frame(sidebar_bottom, bg=self.BG_COLOR)
-            spacer.grid(row=0, column=1, sticky="nsew")
-        filler = tk.Frame(sidebar_bottom, bg=self.BG_COLOR)
-        filler.grid(row=0, column=2, sticky="nsew")
+            filler = tk.Frame(sidebar_bottom, bg=self.BG_COLOR)
+            filler.grid(row=0, column=2, sticky="nsew")
 
         # Selection row
         self.selection_frame = tk.Frame(self, bg=self.BG_COLOR)
@@ -363,6 +370,17 @@ class GameView(tk.Frame):
         if color is None:
             return
         self.selected_piece = cast(PIECE_COLOR, color)
+        self.rotation = 0
+        self.flip_h = False
+        self.flip_v = False
+        self.refresh_board()
+        self.render_available_pieces()
+        self.render_piece_preview()
+        self.refresh_control_labels()
+
+    def new_board(self):
+        self.board.generate_puzzle()
+        self.selected_piece = cast(PIECE_COLOR, self.board.available[0]) if self.board.available else None
         self.rotation = 0
         self.flip_h = False
         self.flip_v = False
