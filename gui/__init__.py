@@ -1,4 +1,4 @@
 """GUI package for IQ Puzzler application."""
-from .puzzler_gui import PuzzlerGUI
+from .app_gui import AppGUI
 
-__all__ = ["PuzzlerGUI"]
+__all__ = ["app_gui"]
