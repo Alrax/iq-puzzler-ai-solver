@@ -1,6 +1,7 @@
 """Backtracking solver scaffolding for the IQ Puzzler board."""
 from __future__ import annotations
 
+import copy
 from typing import Dict, Iterable, List, Sequence, Tuple
 
 from game_logic.board import Board
@@ -28,12 +29,18 @@ class BTSolver:
 
     def solve(self) -> bool:
         """Return True when a complete tiling is found; False otherwise."""
+        original_board = self.board
+        working_board = copy.deepcopy(original_board)
+        self.board = working_board
         self.variables = self._ordered_variables()
         self.assignment.clear()
         self.solution_steps.clear()
         self.nodes_visited = 0
         self.placements_tested = 0
-        return self._backtrack(self.variables, self.assignment, [])
+        try:
+            return self._backtrack(self.variables, self.assignment, [])
+        finally:
+            self.board = original_board
 
     def _backtrack(
         self,

@@ -144,11 +144,11 @@ class GameView(tk.Frame):
             "padx": 12,
             "pady": 8,
         }
-        self.rotate_btn = make_primary_button(controls, text="Rotate (0°)", command=self.rotate_piece, **button_kwargs)
+        self.rotate_btn = make_primary_button(controls, text="↻ Rotate", command=self.rotate_piece, **button_kwargs)
         self.rotate_btn.grid(row=0, column=0, padx=4, pady=4, sticky="nsew")
-        self.flip_v_btn = make_primary_button(controls, text="Flip V (Off)", command=self.flip_piece_v, **button_kwargs)
+        self.flip_v_btn = make_primary_button(controls, text="Flip V", command=self.flip_piece_v, **button_kwargs)
         self.flip_v_btn.grid(row=0, column=1, padx=4, pady=4, sticky="nsew")
-        self.flip_h_btn = make_primary_button(controls, text="Flip H (Off)", command=self.flip_piece_h, **button_kwargs)
+        self.flip_h_btn = make_primary_button(controls, text="Flip H", command=self.flip_piece_h, **button_kwargs)
         self.flip_h_btn.grid(row=0, column=2, padx=4, pady=4, sticky="nsew")
 
         # Sidebar bottom: actions
@@ -160,7 +160,7 @@ class GameView(tk.Frame):
             sidebar_bottom.columnconfigure(i, weight=1, uniform="actions")
         take_back_btn = make_primary_button(
             sidebar_bottom,
-            text="Take Back Piece",
+            text="Undo",
             command=self.take_back_piece,
             font=self.small_font,
             padx=12,
@@ -285,11 +285,11 @@ class GameView(tk.Frame):
     def refresh_control_labels(self):
         # Update control button texts to show current rotation/flip state
         if hasattr(self, 'rotate_btn'):
-            self.rotate_btn.configure(text=f"Rotate ({self.rotation}°)")
+            self.rotate_btn.configure(text="↻ Rotate")
         if hasattr(self, 'flip_v_btn'):
-            self.flip_v_btn.configure(text=f"Flip V ({'On' if self.flip_v else 'Off'})")
+            self.flip_v_btn.configure(text="Flip V")
         if hasattr(self, 'flip_h_btn'):
-            self.flip_h_btn.configure(text=f"Flip H ({'On' if self.flip_h else 'Off'})")
+            self.flip_h_btn.configure(text="Flip H")
 
     def resize_board_cells(self):
         # Determine new cell size based on available board_area width so board follows window width
