@@ -2,6 +2,7 @@ import tkinter as tk
 from game_logic.board import Board
 from gui.main_menu import MainMenu
 from gui.game_view import GameView
+from solver.bt_solver import BTSolver
 
 class AppGUI:
     """Container/manager for all application views (menus & game screens)."""
@@ -11,6 +12,7 @@ class AppGUI:
         self.root.title("IQ Puzzler AI Solver")
         self.root.geometry("1080x720")
         self.board = Board()
+        self.solver = BTSolver(self.board)
 
         self._container = tk.Frame(root)
         self._container.pack(fill="both", expand=True)

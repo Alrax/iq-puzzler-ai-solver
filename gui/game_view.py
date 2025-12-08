@@ -1,9 +1,12 @@
 import tkinter as tk
 import random
-from typing import cast
+import threading
+import time
+from typing import Any, cast
 from gui.components.styled_button import make_primary_button
 from game_logic.constants import PIECE_CODES, PIECE_COLOR
 from game_logic.board import Board
+from solver.bt_solver import Placement
 
 class GameView(tk.Frame):
     BG_COLOR = "#121212"
@@ -43,6 +46,16 @@ class GameView(tk.Frame):
         self.rotation = 0
         self.flip_h = False
         self.flip_v = False
+        self._solving = False
+        self.solve_btn: tk.Button | None = None
+        self.status_var = tk.StringVar(value="Ready" if mode == "auto" else "")
+        self._pre_solve_state: dict[str, Any] | None = None
+        self._solution_queue: list[tuple[PIECE_COLOR, Placement]] = []
+        self._animation_delay_ms = 250
+        self._solve_start_time: float | None = None
+        self._solve_elapsed: float | None = None
+        self._timer_job: str | None = None
+        self._solver_stats: dict[str, int] = {}
 
         # Widgets containers
         self.board_cells: list[list[tk.Label]] = []
@@ -141,6 +154,8 @@ class GameView(tk.Frame):
         # Sidebar bottom: actions
         sidebar_bottom = tk.Frame(sidebar, bg=self.BG_COLOR)
         sidebar_bottom.grid(row=1, column=0, sticky="sew")
+        sidebar_bottom.rowconfigure(0, weight=0)
+        sidebar_bottom.rowconfigure(1, weight=1)
         for i in range(3):
             sidebar_bottom.columnconfigure(i, weight=1, uniform="actions")
         take_back_btn = make_primary_button(
@@ -162,18 +177,26 @@ class GameView(tk.Frame):
         )
         new_board_btn.grid(row=0, column=1, padx=4, pady=6, sticky="nsew")
         if self.mode == "auto":
-            solve_btn = make_primary_button(
+            self.solve_btn = make_primary_button(
                 sidebar_bottom,
                 text="Solve",
-                command=lambda: None,
+                command=self.trigger_solve,
                 font=self.small_font,
                 padx=12,
                 pady=8,
             )
-            solve_btn.grid(row=0, column=2, padx=4, pady=6, sticky="nsew")
+            self.solve_btn.grid(row=0, column=2, padx=4, pady=6, sticky="nsew")
         else:
             filler = tk.Frame(sidebar_bottom, bg=self.BG_COLOR)
             filler.grid(row=0, column=2, sticky="nsew")
+        self.status_label = tk.Label(
+            sidebar_bottom,
+            textvariable=self.status_var,
+            fg=self.FG_COLOR,
+            bg=self.BG_COLOR,
+            font=self.small_font,
+        )
+        self.status_label.grid(row=1, column=0, columnspan=3, pady=(4, 0))
 
         # Selection row
         self.selection_frame = tk.Frame(self, bg=self.BG_COLOR)
@@ -335,6 +358,8 @@ class GameView(tk.Frame):
         self.refresh_control_labels()
 
     def handle_board_click(self, row: int, col: int):
+        if self._solving:
+            return
         if self.selected_piece is None:
             return
         color = self.selected_piece
@@ -366,6 +391,8 @@ class GameView(tk.Frame):
         self.refresh_control_labels()
 
     def take_back_piece(self):
+        if self._solving:
+            return
         color = self.board.undo_last_piece()
         if color is None:
             return
@@ -379,6 +406,8 @@ class GameView(tk.Frame):
         self.refresh_control_labels()
 
     def new_board(self):
+        if self._solving:
+            return
         self.board.generate_puzzle()
         self.selected_piece = cast(PIECE_COLOR, self.board.available[0]) if self.board.available else None
         self.rotation = 0
@@ -388,4 +417,157 @@ class GameView(tk.Frame):
         self.render_available_pieces()
         self.render_piece_preview()
         self.refresh_control_labels()
+
+    # --- Solver controls ---
+    def trigger_solve(self):
+        if self._solving:
+            return
+        solver = getattr(self.app, "solver", None)
+        if solver is None:
+            self._update_status("Solver unavailable")
+            return
+        self._solving = True
+        self._pre_solve_state = self._snapshot_board()
+        self._solution_queue = []
+        self._solver_stats = {}
+        self._solve_start_time = time.perf_counter()
+        self._solve_elapsed = None
+        self._update_status("Solving...")
+        if self.solve_btn is not None:
+            self.solve_btn.configure(state=tk.DISABLED)
+        self.disable_board_inputs()
+        self._start_timer()
+        thread = threading.Thread(target=self._solve_async, args=(solver,), daemon=True)
+        thread.start()
+
+    def _solve_async(self, solver):
+        success = solver.solve()
+        stats = {
+            "nodes": getattr(solver, "nodes_visited", 0),
+            "placements": getattr(solver, "placements_tested", 0),
+            "steps": len(getattr(solver, "solution_steps", [])),
+        }
+        duration = None
+        if self._solve_start_time is not None:
+            duration = time.perf_counter() - self._solve_start_time
+        self.after(0, lambda: self._on_solver_finished(success, stats, duration))
+
+    def _on_solver_finished(self, success: bool, stats: dict[str, int], duration: float | None):
+        self._stop_timer()
+        self._solve_elapsed = duration
+        self._solver_stats = stats or {}
+        solver = getattr(self.app, "solver", None)
+        if not success or solver is None or not getattr(solver, "solution_steps", None):
+            self._restore_board(self._pre_solve_state)
+            self._pre_solve_state = None
+            self._solving = False
+            if self.solve_btn is not None:
+                self.solve_btn.configure(state=tk.NORMAL)
+            self.enable_board_inputs()
+            self.refresh_board()
+            self.render_available_pieces()
+            self._select_next_available_piece()
+            self._update_status(self._format_result_message(False))
+            return
+        self._solution_queue = list(solver.solution_steps)
+        self._restore_board(self._pre_solve_state)
+        self._pre_solve_state = None
+        self.refresh_board()
+        self.render_available_pieces()
+        self._select_next_available_piece()
+        elapsed_txt = f"{self._solve_elapsed:.2f}s" if self._solve_elapsed is not None else ""
+        anim_msg = "Animating solution"
+        if elapsed_txt:
+            anim_msg += f" (found in {elapsed_txt})"
+        self._update_status(anim_msg)
+        self._animate_solution_step()
+
+    def disable_board_inputs(self):
+        self.board_frame.configure(cursor="watch")
+
+    def enable_board_inputs(self):
+        self.board_frame.configure(cursor="")
+
+    def _update_status(self, text: str):
+        if self.status_var is not None:
+            self.status_var.set(text)
+
+    def _animate_solution_step(self):
+        if not self._solution_queue:
+            self._solving = False
+            if self.solve_btn is not None:
+                self.solve_btn.configure(state=tk.NORMAL)
+            self.enable_board_inputs()
+            self.refresh_board()
+            self.render_available_pieces()
+            self._select_next_available_piece()
+            self._update_status(self._format_result_message(True))
+            return
+        color, placement = self._solution_queue.pop(0)
+        row, col, rotation, flip_h, flip_v = placement
+        self.board.place_piece(color, row, col, rotation, flip_h, flip_v)
+        try:
+            self.board.available.remove(color)
+        except ValueError:
+            pass
+        self.refresh_board()
+        self.render_available_pieces()
+        self.after(self._animation_delay_ms, self._animate_solution_step)
+
+    def _snapshot_board(self) -> dict[str, Any]:
+        return {
+            "grid": [row[:] for row in self.board.grid],
+            "available": list(self.board.available),
+            "history": [(color, list(cells)) for color, cells in self.board.history],
+        }
+
+    def _restore_board(self, state: dict[str, Any] | None) -> None:
+        if not state:
+            return
+        grid = state.get("grid")
+        if grid:
+            self.board.grid = [row[:] for row in grid]
+        available = state.get("available")
+        if available is not None:
+            self.board.available = list(available)
+        history = state.get("history")
+        if history is not None:
+            self.board.history = [(color, list(cells)) for color, cells in history]
+
+    def _start_timer(self):
+        if self._timer_job is not None:
+            self.after_cancel(self._timer_job)
+        self._timer_job = self.after(100, self._update_timer)
+
+    def _update_timer(self):
+        if not self._solving or self._solve_start_time is None:
+            self._timer_job = None
+            return
+        elapsed = time.perf_counter() - self._solve_start_time
+        self._update_status(f"Solving… {elapsed:.2f}s")
+        self._timer_job = self.after(100, self._update_timer)
+
+    def _stop_timer(self):
+        if self._timer_job is not None:
+            self.after_cancel(self._timer_job)
+            self._timer_job = None
+
+    def _format_result_message(self, success: bool) -> str:
+        header = "Solved ✅" if success else "No solution"
+        lines: list[str] = [header]
+        stats_lines: list[str] = []
+        if self._solve_elapsed is not None:
+            stats_lines.append(f"• Time: {self._solve_elapsed:.2f}s")
+        nodes = self._solver_stats.get("nodes")
+        if nodes:
+            stats_lines.append(f"• Nodes: {nodes}")
+        placements = self._solver_stats.get("placements")
+        if placements:
+            stats_lines.append(f"• Placements: {placements}")
+        steps = self._solver_stats.get("steps")
+        if steps:
+            stats_lines.append(f"• Moves: {steps}")
+        if stats_lines:
+            lines.extend(stats_lines)
+        return "\n".join(lines)
 
